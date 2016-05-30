@@ -3,6 +3,22 @@ import string
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import Qt
 
+class WordButton(QtGui.QPushButton):
+	def __init__(self,word,id):
+		super(WordButton, self).__init__()
+		self.setText(word)
+		self.original = word
+		self.id = id
+
+	def contextMenuEvent(self, event):
+		menu = QtGui.QMenu(self)
+		editAction = menu.addAction("&Edit word")
+		action = menu.exec_(self.mapToGlobal(event.pos()))
+		if action == editAction:
+			text,ok = QtGui.QInputDialog.getText(self,self.text(),"New value:")
+			if ok:
+				self.setText(text)
+
 class Main(QtGui.QMainWindow):
 
 	def __init__(self, parent = None):
@@ -179,6 +195,8 @@ class Main(QtGui.QMainWindow):
 
 		# If we selected a file, save. Otherwise, do nothing.
 		if self.filename:
+			# make sure the original text is up to date
+			self.buildOriginal()
 			# Make sure file ends with our .ilt extension
 			if not self.filename.endswith(".ilt"):
 				self.filename += ".ilt"
@@ -187,18 +205,45 @@ class Main(QtGui.QMainWindow):
 			with open(self.filename,"wt") as file:
 				string = ""
 				i = 0
+				curRow = 0
 				for chapter in self.text.chapterList:
-					string += "\n<<<CHAPTER>>>\n\n" + chapter + "\n\n"
+					original = "\n<<<CHAPTER>>>\n\n"+chapter+"\n\n"
 					translation = "<<<TRAN>>>\n\n"
 					if self.text.wordList[i]:
 						for (row,org,trans,gram) in self.text.wordList[i]:
 							translation += "= " + trans.text() + " "
 					else:
 						translation += self.text.translationList[i].strip()+" "
-					string += translation[:-1] + "\n"
+
+					string += original + translation[:-1] + "\n"
 					i += 1
 				file.write(string)
 				self.saved = True
+
+	def buildOriginal(self):
+		i = 0
+		for chapter in self.text.chapterList:
+			# check if we've loaded that text
+			if self.text.wordList[i]:
+				paragraphs = chapter.split('\n')
+				chapterWords = []
+				# Split into paragraphs and add a \n to last word
+				for paragraph in paragraphs:
+					chapterWords += paragraph.split(' ')
+					chapterWords[-1] += '\n'
+				chapterWords = chapterWords[:-1]
+				chapter = ""
+				j = 0
+				for word in chapterWords:
+					wordList = self.text.wordList[i][j]
+					row, org, trans, gram = wordList
+					if "\n" not in word:
+						word += " "
+					word = word.replace(org.original,org.text())
+					chapter += word
+					j += 1
+				self.text.chapterList[i] = chapter
+			i += 1
 
 	def saveAs(self):
 		filename = self.filename
@@ -210,6 +255,8 @@ class Main(QtGui.QMainWindow):
 
 	def export(self):
 		if self.filename:
+			self.save()
+			self.buildOriginal()
 			with open(self.filename+"x","wt") as f:
 				fileText = ""
 				for i in range(self.text.numChapters):
@@ -306,8 +353,7 @@ class Main(QtGui.QMainWindow):
 					chars = 0
 					rows += 1
 				# Create [original] button
-				css = "text-align: left; padding: 0px 1px; margin: 0 0px;"
-				orig = QtGui.QPushButton(word)
+				orig = WordButton(word,wordCount)
 				orig.setCheckable(True)
 				orig.setFlat(True)
 				orig.setStyleSheet("""	QPushButton {
@@ -330,9 +376,10 @@ class Main(QtGui.QMainWindow):
 					trans = QtGui.QLineEdit(translation[wordCount].strip())
 				else:
 					trans = QtGui.QLineEdit()
-				trans.setStyleSheet(css + "border: 1px dotted darkgray; background: white;")
+				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
+				trans.setStyleSheet(css)
 				gram = QtGui.QLineEdit()
-				gram.setStyleSheet(css + "border: 1px dotted darkgray; background: white;")
+				gram.setStyleSheet(css)
 				gram.setFocusPolicy(Qt.NoFocus)
 				# Add original/translation to wordList
 				wordList.append([rows,orig,trans,gram])
