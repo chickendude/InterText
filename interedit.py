@@ -69,6 +69,16 @@ class Main(QtGui.QMainWindow):
 		self.exportAction.setStatusTip("Export project")
 		self.exportAction.setShortcut("Ctrl+E")
 		self.exportAction.triggered.connect(self.export)
+		# Multi-word button
+		self.multiAction = QtGui.QAction(QtGui.QIcon("icons/multi.png"),"Multi-Word",self)
+		self.multiAction.setStatusTip("Add multi-word translation")
+		self.multiAction.setShortcut("Ctrl+M")
+		self.multiAction.triggered.connect(self.multiAdd)
+		# Remove multi-word button
+		self.multiRemAction = QtGui.QAction(QtGui.QIcon("icons/multiRemove.png"),"Remove Multi-Word",self)
+		self.multiRemAction.setStatusTip("Remove multi-word translation")
+		self.multiRemAction.setShortcut("Ctrl+Shift+M")
+		self.multiRemAction.triggered.connect(self.multiRemove)
 
 		# Create toolbar
 		self.toolbar = self.addToolBar("Options")
@@ -78,8 +88,9 @@ class Main(QtGui.QMainWindow):
 		self.toolbar.addAction(self.openAction)
 		self.toolbar.addAction(self.saveAction)
 		self.toolbar.addAction(self.exportAction)
-
 		self.toolbar.addSeparator()
+		self.toolbar.addAction(self.multiAction)
+		self.toolbar.addAction(self.multiRemAction)
 
 	def initMenubar(self):
 		self.menubar = self.menuBar()
@@ -103,7 +114,9 @@ class Main(QtGui.QMainWindow):
 		file.addAction(self.exportAction)
 		file.addAction(self.exitAction)
 		edit = self.menubar.addMenu("Edit")
-		view = self.menubar.addMenu("View")
+		tool = self.menubar.addMenu("Tools")
+		tool.addAction(self.multiAction)
+		tool.addAction(self.multiRemAction)
 
 	def new(self):
 		filename = QtGui.QFileDialog.getOpenFileName(self, 'Load Text',".","(*.txt);;All(*.*)")
@@ -231,6 +244,40 @@ class Main(QtGui.QMainWindow):
 		translation (optional) = the already translated text
 		grammar (optional) = list of grammar notes
 	"""
+
+	def multiAdd(self):
+		curChap = self.text.currentChapter
+		selectedWords = []
+		numWords = 0
+		# Find which words have been selected
+		for (rows,orig,trans,gram) in self.text.wordList[curChap]:
+			if orig.isChecked():
+				numWords += 1
+				selectedWords.append((orig,trans))
+		# Make sure we've selected something, first
+		if numWords > 0:
+
+			words = "["
+			for (orig,trans) in selectedWords:
+				words += orig.text()+", "
+			words = words[:-2]+"]"
+
+			text,ok = QtGui.QInputDialog.getText(self,words,"Enter translation:")
+			if ok:
+				for (orig,trans) in selectedWords:
+					trans.setText(trans.text().rstrip()+" ["+text+"]")
+					orig.setChecked(False)
+
+	def multiRemove(self):
+		curChap = self.text.currentChapter
+		# Find which words have been selected
+		for (rows,orig,trans,gram) in self.text.wordList[curChap]:
+			if orig.isChecked():
+				orig.setChecked(False)
+				if '[' in trans.text() and ']' in trans.text():
+					text = trans.text()
+					trans.setText(text[:text.rfind('[')].rstrip())
+
 	def loadText(self, chapter, original, translation="", grammar=""):
 		# build translation list if we've already got a translation
 		if translation:
@@ -289,9 +336,6 @@ class Main(QtGui.QMainWindow):
 				gram.setFocusPolicy(Qt.NoFocus)
 				# Add original/translation to wordList
 				wordList.append([rows,orig,trans,gram])
-
-				print("{}: word: {}, trans: {}".format(wordCount,word,translation[wordCount]))
-
 				wordCount += 1
 		# Make a list with each row of the text
 		hboxList = []
