@@ -261,8 +261,23 @@ class Main(QtGui.QMainWindow):
 				# Create [original] button
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px;"
 				orig = QtGui.QPushButton(word)
+				orig.setCheckable(True)
 				orig.setFlat(True)
-				orig.setStyleSheet(css)
+				orig.setStyleSheet("""	QPushButton {
+											background: none;
+											border: none;
+											text-align: left;
+											padding: 0px 1px;
+											margin: 0 0px;
+										}
+										QPushButton:pressed {
+											background:#DCDCDC;
+											border: 1px solid #A5A5E5;
+										}
+										QPushButton:checked {
+											background:#DCDCDC;
+											border: 1px solid #A5A5E5;
+										}""")
 				orig.setFocusPolicy(Qt.NoFocus)
 				if translation:
 					trans = QtGui.QLineEdit(translation[wordCount].strip())
