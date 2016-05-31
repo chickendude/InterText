@@ -26,6 +26,7 @@ class Main(QtGui.QMainWindow):
 
 		self.filename = ""
 		self.saved = False
+		self.loaded = False
 		self.initUI()
 
 	def initUI(self):
@@ -95,6 +96,11 @@ class Main(QtGui.QMainWindow):
 		self.multiRemAction.setStatusTip("Remove multi-word translation")
 		self.multiRemAction.setShortcut("Ctrl+Shift+M")
 		self.multiRemAction.triggered.connect(self.multiRemove)
+		# Show original text
+		self.showTextAction = QtGui.QAction(QtGui.QIcon("icons/original.png"),"Show original",self)
+		self.showTextAction.setStatusTip("Show original text in a pop-up window")
+		self.showTextAction.setShortcut("Ctrl+T")
+		self.showTextAction.triggered.connect(self.showText)
 
 		# Create toolbar
 		self.toolbar = self.addToolBar("Options")
@@ -107,6 +113,8 @@ class Main(QtGui.QMainWindow):
 		self.toolbar.addSeparator()
 		self.toolbar.addAction(self.multiAction)
 		self.toolbar.addAction(self.multiRemAction)
+		self.toolbar.addSeparator()
+		self.toolbar.addAction(self.showTextAction)
 
 	def initMenubar(self):
 		self.menubar = self.menuBar()
@@ -220,31 +228,6 @@ class Main(QtGui.QMainWindow):
 				file.write(string)
 				self.saved = True
 
-	def buildOriginal(self):
-		i = 0
-		for chapter in self.text.chapterList:
-			# check if we've loaded that text
-			if self.text.wordList[i]:
-				paragraphs = chapter.split('\n')
-				chapterWords = []
-				# Split into paragraphs and add a \n to last word
-				for paragraph in paragraphs:
-					chapterWords += paragraph.split(' ')
-					chapterWords[-1] += '\n'
-				chapterWords = chapterWords[:-1]
-				chapter = ""
-				j = 0
-				for word in chapterWords:
-					wordList = self.text.wordList[i][j]
-					row, org, trans, gram = wordList
-					if "\n" not in word:
-						word += " "
-					word = word.replace(org.original,org.text())
-					chapter += word
-					j += 1
-				self.text.chapterList[i] = chapter
-			i += 1
-
 	def saveAs(self):
 		filename = self.filename
 		self.filename = ""
@@ -324,6 +307,36 @@ class Main(QtGui.QMainWindow):
 				if '[' in trans.text() and ']' in trans.text():
 					text = trans.text()
 					trans.setText(text[:text.rfind('[')].rstrip())
+
+	def showText(self):
+		if self.loaded:
+			self.buildOriginal()
+			# The window will go into this widget
+			self.textWindow = QtGui.QWidget()
+			# Make a scroll area and put a QLabel inside it
+			self.scrollArea = QtGui.QScrollArea(self.textWindow)
+			self.scrollArea.setWidgetResizable(True)
+			# The layout for our window
+			layout = QtGui.QVBoxLayout(self.textWindow)
+			layout.addWidget(self.scrollArea)
+			layout.setContentsMargins(0,0,0,0)
+
+			# Add a widget into the scroll area where our contents will go
+			text = self.text.chapterList[self.text.currentChapter].replace("\n","\n\n")
+			self.chapterText = QtGui.QLabel(text)
+			self.chapterText.setContentsMargins(10,5,10,5)
+			self.chapterText.setWordWrap(True)
+			self.chapterText.setAlignment(Qt.AlignJustify)
+			font = QtGui.QFont("",12)
+			self.chapterText.setFont(font)
+			self.scrollArea.setWidget(self.chapterText)
+
+			#self.textWindow.setwindowTitle("Chapter {}".format(self.text.currentChapter+1))
+
+			self.textWindow.show()
+			# x and y coordinates on the screen, width, height
+
+			print("drawn")
 
 	def loadText(self, chapter, original, translation="", grammar=""):
 		# build translation list if we've already got a translation
@@ -409,6 +422,7 @@ class Main(QtGui.QMainWindow):
 			hboxList[i].addStretch(1)
 			vbox.addLayout(hboxList[i])
 		self.scrollAreaList[chapter].setLayout(vbox)
+		self.loaded = True
 
 	def changeChapter(self,i):
 		if(i != self.text.currentChapter):
@@ -419,6 +433,36 @@ class Main(QtGui.QMainWindow):
 				self.loadText(i,self.text.chapterList[i],translation)
 			self.text.currentChapter = i
 			self.scrollAreaStack.setCurrentIndex(i)
+
+	def buildOriginal(self):
+		i = 0
+		for chapter in self.text.chapterList:
+			# check if we've loaded that text
+			if self.text.wordList[i]:
+				paragraphs = chapter.split('\n')
+				print(paragraphs[-1])
+				chapterWords = []
+				# Split into paragraphs and add a \n to last word
+				for paragraph in paragraphs:
+					chapterWords += paragraph.split(' ')
+					chapterWords[-1] += '\n'
+				chapterWords[-1] = chapterWords[-1][:-1]
+				chapter = ""
+				j = 0
+				print("----------------------------------------------------------")
+				print(chapterWords)
+				for word in chapterWords:
+					wordList = self.text.wordList[i][j]
+					row, org, trans, gram = wordList
+					if "\n" not in word:
+						word += " "
+					word = word.replace(org.original,org.text())
+					chapter += word
+					j += 1
+				self.text.chapterList[i] = chapter[:-1]
+				print("_-----------___-----")
+				print(chapter)
+			i += 1
 
 def pullString(str,delim1,delim2):
 	strStart = str.find(delim1) + len(delim1)
