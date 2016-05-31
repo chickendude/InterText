@@ -19,6 +19,61 @@ class WordButton(QtGui.QPushButton):
 			if ok:
 				self.setText(text)
 
+class TransLineEdit(QtGui.QLineEdit):
+	# Re implemented for the focus in/out events (to know if it is currently selected or not)
+	def __init__(self, parent = None):
+		super(TransLineEdit, self).__init__(parent)
+		self.active = False
+
+	def focusInEvent(self, e):
+		self.active = True
+		super(TransLineEdit, self).focusInEvent(e)
+
+	def focusOutEvent(self, e):
+		self.active = False
+		super(TransLineEdit, self).focusOutEvent(e)
+
+class OriginalWindow(QtGui.QWidget):
+	def __init__(self, text, fontSize = 12, parent=None):
+		super(OriginalWindow, self).__init__(parent)
+		self.fontSize = fontSize
+		self.text = text
+		self.initialize()
+
+	def initialize(self):
+		# Make a scroll area and put a QLabel inside it
+		self.scrollArea = QtGui.QScrollArea(self)
+		self.scrollArea.setWidgetResizable(True)
+		# Buttons for zoom
+		self.zoomLayout = QtGui.QHBoxLayout()
+		# The layout for our window
+		layout = QtGui.QVBoxLayout(self)
+		layout.addWidget(self.scrollArea)
+		layout.setContentsMargins(0,0,0,0)
+
+		self.chapterText = QtGui.QLabel(self.text)
+		self.chapterText.setContentsMargins(10,5,10,5)
+		self.chapterText.setWordWrap(True)
+		self.chapterText.setAlignment(Qt.AlignJustify)
+		font = QtGui.QFont("",self.fontSize)
+		self.chapterText.setFont(font)
+		self.scrollArea.setWidget(self.chapterText)
+
+	def keyPressEvent(self, event):
+		if event.key() == QtCore.Qt.Key_Escape:
+			self.hide()
+			event.accept()
+		elif event.key() == QtCore.Qt.Key_Plus:
+			self.fontSize += 1
+			font = QtGui.QFont("",self.fontSize)
+			self.chapterText.setFont(font)
+		elif event.key() == QtCore.Qt.Key_Minus:
+			self.fontSize -= 1
+			font = QtGui.QFont("",self.fontSize)
+			self.chapterText.setFont(font)
+		else:
+			super(OriginalWindow, self).keyPressEvent(event)
+
 class Main(QtGui.QMainWindow):
 
 	def __init__(self, parent = None):
@@ -27,6 +82,7 @@ class Main(QtGui.QMainWindow):
 		self.filename = ""
 		self.saved = False
 		self.loaded = False
+		self.originalFontSize = 12
 		self.initUI()
 
 	def initUI(self):
@@ -141,6 +197,8 @@ class Main(QtGui.QMainWindow):
 		tool = self.menubar.addMenu("Tools")
 		tool.addAction(self.multiAction)
 		tool.addAction(self.multiRemAction)
+
+	# ACTIONS #
 
 	def new(self):
 		filename = QtGui.QFileDialog.getOpenFileName(self, 'Load Text',".","(*.txt);;All(*.*)")
@@ -311,32 +369,45 @@ class Main(QtGui.QMainWindow):
 	def showText(self):
 		if self.loaded:
 			self.buildOriginal()
+
+			curChap = self.text.currentChapter
+			text = self.text.chapterList[curChap].replace('\n','\n\n')
+			curBoxText = "<<<NULL>>>"
+
+			words = text.replace('\n\n','# ').split(' ')
+			i = 0
+			isSelection = False
+			for (row,org,trans,gram) in self.text.wordList[curChap]:
+				if trans.active == True:
+					isSelection = True
+					break
+				i += 1
+			if isSelection:
+				punctuation = ['.','!','?','#']
+				iL = i-1
+				iR = i
+				while words[iL][-1] not in punctuation:
+					iL -= 1
+				while words[iR][-1] not in punctuation:
+					iR += 1
+				words[iR] = words[iR].rstrip('#')
+
+				sentence = ""
+				for i in range(iL+1,iR+1):
+					sentence += words[i] + " "
+				sentence = sentence[:-1]
+				text = text.replace(sentence,"<B>"+sentence+"</B>").replace("\n\n","<BR><BR>")
+
 			# The window will go into this widget
-			self.textWindow = QtGui.QWidget()
-			# Make a scroll area and put a QLabel inside it
-			self.scrollArea = QtGui.QScrollArea(self.textWindow)
-			self.scrollArea.setWidgetResizable(True)
-			# The layout for our window
-			layout = QtGui.QVBoxLayout(self.textWindow)
-			layout.addWidget(self.scrollArea)
-			layout.setContentsMargins(0,0,0,0)
+			self.textWindow = OriginalWindow(text)
 
 			# Add a widget into the scroll area where our contents will go
-			text = self.text.chapterList[self.text.currentChapter].replace("\n","\n\n")
-			self.chapterText = QtGui.QLabel(text)
-			self.chapterText.setContentsMargins(10,5,10,5)
-			self.chapterText.setWordWrap(True)
-			self.chapterText.setAlignment(Qt.AlignJustify)
-			font = QtGui.QFont("",12)
-			self.chapterText.setFont(font)
-			self.scrollArea.setWidget(self.chapterText)
 
 			#self.textWindow.setwindowTitle("Chapter {}".format(self.text.currentChapter+1))
 
 			self.textWindow.show()
-			# x and y coordinates on the screen, width, height
 
-			print("drawn")
+	# MISC ROUTINES #
 
 	def loadText(self, chapter, original, translation="", grammar=""):
 		# build translation list if we've already got a translation
@@ -386,9 +457,9 @@ class Main(QtGui.QMainWindow):
 										}""")
 				orig.setFocusPolicy(Qt.NoFocus)
 				if translation:
-					trans = QtGui.QLineEdit(translation[wordCount].strip())
+					trans = TransLineEdit(translation[wordCount].strip())
 				else:
-					trans = QtGui.QLineEdit()
+					trans = TransLineEdit()
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
 				gram = QtGui.QLineEdit()
@@ -440,7 +511,6 @@ class Main(QtGui.QMainWindow):
 			# check if we've loaded that text
 			if self.text.wordList[i]:
 				paragraphs = chapter.split('\n')
-				print(paragraphs[-1])
 				chapterWords = []
 				# Split into paragraphs and add a \n to last word
 				for paragraph in paragraphs:
@@ -449,8 +519,6 @@ class Main(QtGui.QMainWindow):
 				chapterWords[-1] = chapterWords[-1][:-1]
 				chapter = ""
 				j = 0
-				print("----------------------------------------------------------")
-				print(chapterWords)
 				for word in chapterWords:
 					wordList = self.text.wordList[i][j]
 					row, org, trans, gram = wordList
@@ -460,8 +528,6 @@ class Main(QtGui.QMainWindow):
 					chapter += word
 					j += 1
 				self.text.chapterList[i] = chapter[:-1]
-				print("_-----------___-----")
-				print(chapter)
 			i += 1
 
 def pullString(str,delim1,delim2):
