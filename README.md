@@ -29,3 +29,4 @@ Export a project into the format required by the learn-to-read-foreign-languages
 
 ## Notes
 Currently the second row of text input boxes doesn't do anything (and isn't saved). Later it will be used for grammar explanations.
+

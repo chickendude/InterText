@@ -1,9 +1,11 @@
-import sys
+import sys,os
 import string
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import Qt
 
 class WordButton(QtGui.QPushButton):
+	grammar = QtCore.pyqtSignal(int)
+
 	def __init__(self,word,id):
 		super(WordButton, self).__init__()
 		self.setText(word)
@@ -13,11 +15,15 @@ class WordButton(QtGui.QPushButton):
 	def contextMenuEvent(self, event):
 		menu = QtGui.QMenu(self)
 		editAction = menu.addAction("&Edit word")
+		self.grammarAction = menu.addAction("&Grammar")
+
 		action = menu.exec_(self.mapToGlobal(event.pos()))
 		if action == editAction:
 			text,ok = QtGui.QInputDialog.getText(self,self.text(),"New value:")
 			if ok:
 				self.setText(text)
+		if action == self.grammarAction:
+			self.grammar.emit(self.id)
 
 class TransLineEdit(QtGui.QLineEdit):
 	# Re implemented for the focus in/out events (to know if it is currently selected or not)
@@ -74,16 +80,39 @@ class OriginalWindow(QtGui.QWidget):
 		else:
 			super(OriginalWindow, self).keyPressEvent(event)
 
-class Main(QtGui.QMainWindow):
+class ErrorPopup(QtGui.QMessageBox):
+	def __init__(self, title, msg, parent=None):
+		super(ErrorPopup, self).__init__(parent)
+		self.setIcon(QtGui.QMessageBox.Warning)
+		self.setWindowTitle(title)
+		self.setText(msg)
 
+class Main(QtGui.QMainWindow):
 	def __init__(self, parent = None):
 		QtGui.QMainWindow.__init__(self,parent)
 
 		self.filename = ""
 		self.saved = False
 		self.loaded = False
+		self.currentLanguage = ""
 		self.originalFontSize = 12
+		self.languageList = self.initGrammar()
 		self.initUI()
+
+	def initGrammar(self):
+		languages = []
+		dir = "grammars"
+		if os.path.isdir(dir):
+			for language in os.listdir(dir):
+				if language.endswith(".ilg"):
+					languages.append(language.rstrip('.ilg').capitalize())
+			languages.sort()
+		else:
+			msg = "Can't find 'grammars' directory!\n\nPlease make sure you've downloaded the latest files from the repository."
+			title = "No language data"
+			errorMsg = ErrorPopup(title,msg)
+			answer = errorMsg.exec_()
+		return languages
 
 	def initUI(self):
 		# Initialize
@@ -93,6 +122,14 @@ class Main(QtGui.QMainWindow):
 
 		# Initialize a statusbar for the window
 		self.statusbar = self.statusBar()
+
+		# Read settings file and load previously opened file
+		settingsFile = "settings.cfg"
+		if os.path.isfile(settingsFile):
+			print("inside")
+			with open(settingsFile,"rt") as file:
+				filename = file.read()
+				self.open(filename)
 
 	def initCentral(self):
 		# Everything will go in this central widget
@@ -186,17 +223,31 @@ class Main(QtGui.QMainWindow):
 		self.saveAsAction.setShortcut("Ctrl+Shift+S")
 		self.saveAsAction.triggered.connect(self.saveAs)
 
-		file = self.menubar.addMenu("File")
-		file.addAction(self.newAction)
-		file.addAction(self.openAction)
-		file.addAction(self.saveAction)
-		file.addAction(self.saveAsAction)
-		file.addAction(self.exportAction)
-		file.addAction(self.exitAction)
-		edit = self.menubar.addMenu("Edit")
-		tool = self.menubar.addMenu("Tools")
-		tool.addAction(self.multiAction)
-		tool.addAction(self.multiRemAction)
+		# File
+		fileMenu = self.menubar.addMenu("&File")
+		fileMenu.addAction(self.newAction)
+		fileMenu.addAction(self.openAction)
+		fileMenu.addAction(self.saveAction)
+		fileMenu.addAction(self.saveAsAction)
+		fileMenu.addAction(self.exportAction)
+		fileMenu.addAction(self.exitAction)
+		# Edit
+		editMenu = self.menubar.addMenu("&Edit")
+		# Grammar
+		self.grammarMenu = self.menubar.addMenu("&Grammar")
+		self.setLanguageMenu = self.grammarMenu.addMenu("Set Language")
+		languageGroup = QtGui.QActionGroup(self.setLanguageMenu)
+		for language in self.languageList:
+			# Add action to actionGroup
+			action = languageGroup.addAction(language)
+			action.setCheckable(True)
+			action.triggered[()].connect(lambda language=language: self.changeLanguage(language))
+			# Add action to menu
+			self.setLanguageMenu.addAction(action)
+		# Tools
+		toolMenu = self.menubar.addMenu("&Tools")
+		toolMenu.addAction(self.multiAction)
+		toolMenu.addAction(self.multiRemAction)
 
 	# ACTIONS #
 
@@ -231,11 +282,16 @@ class Main(QtGui.QMainWindow):
 			translation = self.text.translationList[0]
 		self.loadText(0,self.text.chapterList[0],translation)
 
-	def open(self):
-		self.filename = QtGui.QFileDialog.getOpenFileName(self, 'Open File',".","(*.ilt)")
+	def open(self,filename=""):
+		if filename:
+			self.filename = filename
+		else:
+			self.filename = QtGui.QFileDialog.getOpenFileName(self, 'Open File',".","(*.ilt)")
 
 		# If we succeeded, open and read file
 		if self.filename:
+			with open("settings.cfg","wt") as file:
+				file.write(self.filename)
 			vbox = QtGui.QVBoxLayout()
 			vbox.setAlignment(Qt.AlignTop)
 			with open(self.filename,"rt") as file:
@@ -255,75 +311,78 @@ class Main(QtGui.QMainWindow):
 				self.saved = True
 
 	def save(self):
-		# If we haven't saved yet, give it a name
-		if not self.filename:
-			self.filename = QtGui.QFileDialog.getSaveFileName(self, "Save File",".","(*.ilt)")
+		if self.loaded:
+			# If we haven't saved yet, give it a name
+			if not self.filename:
+				self.filename = QtGui.QFileDialog.getSaveFileName(self, "Save File",".","(*.ilt)")
 
-		# If we selected a file, save. Otherwise, do nothing.
-		if self.filename:
-			# make sure the original text is up to date
-			self.buildOriginal()
-			# Make sure file ends with our .ilt extension
-			if not self.filename.endswith(".ilt"):
-				self.filename += ".ilt"
+			# If we selected a file, save. Otherwise, do nothing.
+			if self.filename:
+				# make sure the original text is up to date
+				self.buildOriginal()
+				# Make sure file ends with our .ilt extension
+				if not self.filename.endswith(".ilt"):
+					self.filename += ".ilt"
 
-			# Now that we have a name, save
-			with open(self.filename,"wt") as file:
-				string = ""
-				i = 0
-				curRow = 0
-				for chapter in self.text.chapterList:
-					original = "\n<<<CHAPTER>>>\n\n"+chapter+"\n\n"
-					translation = "<<<TRAN>>>\n\n"
-					if self.text.wordList[i]:
-						for (row,org,trans,gram) in self.text.wordList[i]:
-							translation += "= " + trans.text() + " "
-					else:
-						translation += self.text.translationList[i].strip()+" "
+				# Now that we have a name, save
+				with open(self.filename,"wt") as file:
+					string = ""
+					i = 0
+					curRow = 0
+					for chapter in self.text.chapterList:
+						original = "\n<<<CHAPTER>>>\n\n"+chapter+"\n\n"
+						translation = "<<<TRAN>>>\n\n"
+						if self.text.wordList[i]:
+							for (row,org,trans,gram) in self.text.wordList[i]:
+								translation += "= " + trans.text() + " "
+						else:
+							translation += self.text.translationList[i].strip()+" "
 
-					string += original + translation[:-1] + "\n"
-					i += 1
-				file.write(string)
-				self.saved = True
+						string += original + translation[:-1] + "\n"
+						i += 1
+					file.write(string)
+					self.saved = True
 
 	def saveAs(self):
-		filename = self.filename
-		self.filename = ""
-		self.save()
-		# If it was cancelled, reset the filename to the old name
-		if not self.filename:
-			self.filename = filename
+		if self.loaded:
+			filename = self.filename
+			self.filename = ""
+			self.save()
+			# If it was cancelled, reset the filename to the old name
+			if not self.filename:
+				self.filename = filename
 
 	def export(self):
-		if self.filename:
-			self.save()
-			self.buildOriginal()
-			with open(self.filename+"x","wt") as f:
-				fileText = ""
-				for i in range(self.text.numChapters):
-					# Build string from our entered data
-					fileText += "<<<PAGE>>>\n\n" + self.text.chapterList[i] + "\n\n"
-					original = "<<<ORG>>>\n"
-					translation = "<<<TRAN>>>\n"
-					if self.text.wordList[i]:
-						for (row,org,trans,gram) in self.text.wordList[i]:
-							original += "= " + org.text().strip(' ,.!?/-_;\n') + " "
-							translation += "= " + trans.text() + " "
-					else:
-						translation += self.text.translationList[i].strip()+" "
-					fileText += original[:-1] + "\n"
-					fileText += translation[:-1] + "\n\n"
-				f.write(fileText)
-		else:
-			# prompt user to save
-			savedMsg = QtGui.QMessageBox()
-			savedMsg.setIcon(QtGui.QMessageBox.Warning)
-			savedMsg.setText("You must save before exporting!\nSave now?")
-			savedMsg.setWindowTitle("Save?")
-			savedMsg.setStandardButtons(QtGui.QMessageBox.No | QtGui.QMessageBox.Yes )
-			answer = savedMsg.exec_()
-			if answer == QtGui.QMessageBox.Yes:
+		if self.loaded:
+			if self.filename:
 				self.save()
+				self.buildOriginal()
+				with open(self.filename+"x","wt") as f:
+					fileText = ""
+					for i in range(self.text.numChapters):
+						# Build string from our entered data
+						fileText += "<<<PAGE>>>\n\n" + self.text.chapterList[i] + "\n\n"
+						original = "<<<ORG>>>\n"
+						translation = "<<<TRAN>>>\n"
+						if self.text.wordList[i]:
+							for (row,org,trans,gram) in self.text.wordList[i]:
+								original += "= " + org.text().strip(' ,.!?/-_;\n') + " "
+								translation += "= " + trans.text() + " "
+						else:
+							translation += self.text.translationList[i].strip()+" "
+						fileText += original[:-1] + "\n"
+						fileText += translation[:-1] + "\n\n"
+					f.write(fileText)
+			else:
+				# prompt user to save
+				savedMsg = QtGui.QMessageBox()
+				savedMsg.setIcon(QtGui.QMessageBox.Warning)
+				savedMsg.setText("You must save before exporting!\nSave now?")
+				savedMsg.setWindowTitle("Save?")
+				savedMsg.setStandardButtons(QtGui.QMessageBox.No | QtGui.QMessageBox.Yes )
+				answer = savedMsg.exec_()
+				if answer == QtGui.QMessageBox.Yes:
+					self.save()
 
 	"""
 		loadText
@@ -334,37 +393,39 @@ class Main(QtGui.QMainWindow):
 	"""
 
 	def multiAdd(self):
-		curChap = self.text.currentChapter
-		selectedWords = []
-		numWords = 0
-		# Find which words have been selected
-		for (rows,orig,trans,gram) in self.text.wordList[curChap]:
-			if orig.isChecked():
-				numWords += 1
-				selectedWords.append((orig,trans))
-		# Make sure we've selected something, first
-		if numWords > 0:
+		if self.loaded:
+			curChap = self.text.currentChapter
+			selectedWords = []
+			numWords = 0
+			# Find which words have been selected
+			for (rows,orig,trans,gram) in self.text.wordList[curChap]:
+				if orig.isChecked():
+					numWords += 1
+					selectedWords.append((orig,trans))
+			# Make sure we've selected something, first
+			if numWords > 0:
 
-			words = "["
-			for (orig,trans) in selectedWords:
-				words += orig.text()+", "
-			words = words[:-2]+"]"
-
-			text,ok = QtGui.QInputDialog.getText(self,words,"Enter translation:")
-			if ok:
+				words = "["
 				for (orig,trans) in selectedWords:
-					trans.setText(trans.text().rstrip()+" ["+text+"]")
-					orig.setChecked(False)
+					words += orig.text()+", "
+				words = words[:-2]+"]"
+
+				text,ok = QtGui.QInputDialog.getText(self,words,"Enter translation:")
+				if ok:
+					for (orig,trans) in selectedWords:
+						trans.setText(trans.text().rstrip()+" ["+text+"]")
+						orig.setChecked(False)
 
 	def multiRemove(self):
-		curChap = self.text.currentChapter
-		# Find which words have been selected
-		for (rows,orig,trans,gram) in self.text.wordList[curChap]:
-			if orig.isChecked():
-				orig.setChecked(False)
-				if '[' in trans.text() and ']' in trans.text():
-					text = trans.text()
-					trans.setText(text[:text.rfind('[')].rstrip())
+		if self.loaded:
+			curChap = self.text.currentChapter
+			# Find which words have been selected
+			for (rows,orig,trans,gram) in self.text.wordList[curChap]:
+				if orig.isChecked():
+					orig.setChecked(False)
+					if '[' in trans.text() and ']' in trans.text():
+						text = trans.text()
+						trans.setText(text[:text.rfind('[')].rstrip())
 
 	def showText(self):
 		if self.loaded:
@@ -406,6 +467,9 @@ class Main(QtGui.QMainWindow):
 			self.textWindow.setWindowTitle("Chapter {}".format(curChap+1))
 
 			self.textWindow.show()
+
+	def changeLanguage(self, language):
+		self.currentLanguage = language
 
 	# MISC ROUTINES #
 
@@ -456,15 +520,18 @@ class Main(QtGui.QMainWindow):
 											border: 1px solid #A5A5E5;
 										}""")
 				orig.setFocusPolicy(Qt.NoFocus)
+				orig.grammar.connect(self.addGrammar)
 				if translation:
 					trans = TransLineEdit(translation[wordCount].strip())
 				else:
 					trans = TransLineEdit()
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
+
 				gram = QtGui.QLineEdit()
 				gram.setStyleSheet(css)
 				gram.setFocusPolicy(Qt.NoFocus)
+
 				# Add original/translation to wordList
 				wordList.append([rows,orig,trans,gram])
 				wordCount += 1
@@ -474,7 +541,6 @@ class Main(QtGui.QMainWindow):
 			hboxList.append(QtGui.QHBoxLayout())
 		# Populate list
 		# wordBox is a vbox layout which goes inside the hboxList to form a line of text
-		print("hboxList size {}".format(len(hboxList)))
 		for (row,org,trans,gram) in wordList:
 			wordBox = QtGui.QVBoxLayout()
 			wordBox.addWidget(org)
@@ -529,6 +595,12 @@ class Main(QtGui.QMainWindow):
 					j += 1
 				self.text.chapterList[i] = chapter[:-1]
 			i += 1
+
+	# Signals from WordButton
+	@QtCore.pyqtSlot(int)
+	def addGrammar(self,id):
+		row,org,trans,gram = self.text.wordList[self.text.currentChapter][id]
+		gram.setText("Grammar")
 
 def pullString(str,delim1,delim2):
 	strStart = str.find(delim1) + len(delim1)
