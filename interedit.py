@@ -368,20 +368,23 @@ class Main(QtGui.QMainWindow):
 
 	def showText(self):
 		if self.loaded:
+			# Make sure the original text is up to date
 			self.buildOriginal()
 
 			curChap = self.text.currentChapter
+			# Grab the text from the current chapter
 			text = self.text.chapterList[curChap].replace('\n','\n\n')
-			curBoxText = "<<<NULL>>>"
-
+			# Give new lines a special character to be treated as punctuation
 			words = text.replace('\n\n','# ').split(' ')
 			i = 0
 			isSelection = False
+			# Find the currently selected input box (where the text cursor is)
 			for (row,org,trans,gram) in self.text.wordList[curChap]:
 				if trans.active == True:
 					isSelection = True
 					break
 				i += 1
+			# If the cursor is in a box, bold the sentence it's in
 			if isSelection:
 				punctuation = ['.','!','?','#']
 				iL = i-1
@@ -400,10 +403,7 @@ class Main(QtGui.QMainWindow):
 
 			# The window will go into this widget
 			self.textWindow = OriginalWindow(text)
-
-			# Add a widget into the scroll area where our contents will go
-
-			#self.textWindow.setwindowTitle("Chapter {}".format(self.text.currentChapter+1))
+			self.textWindow.setWindowTitle("Chapter {}".format(curChap+1))
 
 			self.textWindow.show()
 
