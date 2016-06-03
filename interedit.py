@@ -1,5 +1,6 @@
 import sys,os
 import string
+import csv
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import Qt
 
@@ -101,17 +102,17 @@ class GrammarWindow(QtGui.QDialog):
 	def __init__(self, grammarDict, parent=None):
 		super(GrammarWindow, self).__init__(parent)
 		self.grammarDict = grammarDict
-		self.key = ""
-		self.val = ""
+		self.originalKey = ""
 		self.initUI()
 
 	def initUI(self):
 		widget = QtGui.QWidget()
 		layout = QtGui.QVBoxLayout()
 		layout.setAlignment(Qt.AlignTop)
+		layout.setContentsMargins(2,2,2,2)
 		# Where we type new grammar items
 		self.grammarLineEdit = QtGui.QLineEdit()
-		itemList = list(self.grammarDict)
+		itemList = sorted(list(self.grammarDict))
 		self.completer = QtGui.QCompleter(itemList, self.grammarLineEdit)
 		self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
 		self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
@@ -125,38 +126,63 @@ class GrammarWindow(QtGui.QDialog):
 
 		# Where we type the grammar pop up information
 		self.grammarTextEdit = QtGui.QTextEdit()
-		# The submit button
+		# The submit buttons
+		buttonWidget = QtGui.QWidget()
+		buttonLayout = QtGui.QHBoxLayout(buttonWidget)
+		buttonLayout.setContentsMargins(0,0,0,0)
 		self.button = QtGui.QPushButton("Add")
 		self.button.clicked.connect(self.addGrammar)
 		self.button.setMaximumWidth(40)
+		self.saveButton = QtGui.QPushButton("Save")
+		self.saveButton.clicked.connect(self.addGrammar)
+		self.saveButton.setMaximumWidth(40)
+		self.saveButton.setVisible(False)
+		buttonLayout.addWidget(self.button)
+		buttonLayout.addWidget(self.saveButton)
+		# Add all the widgets to layout
 		layout.addWidget(self.grammarLineEdit)
 		layout.addWidget(self.grammarTextEdit)
-		layout.addWidget(self.button)
+		layout.addWidget(buttonWidget)
+
 		self.setLayout(layout)
 		self.setWindowTitle("Edit Grammar")
 
 	def addGrammar(self):
-		key = self.grammarLineEdit.text()
-		val = self.grammarTextEdit.toPlainText()
-		# Add to dictionary
-		self.grammarDict[key] = val
-		# Reset fields
-		self.grammarLineEdit.setText("")
-		self.grammarLineEdit.setFocus()
-		self.grammarTextEdit.setText("")
-		# Update completer data
-		self.completer = QtGui.QCompleter(sorted(list(self.grammarDict)), self.grammarLineEdit)
-		self.grammarLineEdit.setCompleter(self.completer)
-		self.grammarLineEdit.completer().complete()
+		if self.button.text() == "Edit" and not self.saveButton.isVisible():
+			self.originalKey = self.grammarLineEdit.displayText()
+			self.button.setEnabled(False)
+			self.saveButton.setVisible(True)
+			self.grammarTextEdit.setEnabled(True)
+		else:
+			# if save was pressed and not add
+			if self.saveButton.isVisible():
+				del self.grammarDict[self.originalKey]
+				self.button.setEnabled(True)
+				self.saveButton.setVisible(False)
+			key = self.grammarLineEdit.text()
+			val = self.grammarTextEdit.toPlainText()
+			# Add to dictionary
+			self.grammarDict[key] = val
+			# Reset fields
+			self.grammarLineEdit.setText("")
+			self.grammarLineEdit.setFocus()
+			self.grammarTextEdit.setText("")
+			# Update completer data
+			self.completer = QtGui.QCompleter(sorted(list(self.grammarDict)), self.grammarLineEdit)
+			self.grammarLineEdit.setCompleter(self.completer)
+			self.grammarLineEdit.completer().complete()
 
 	def textChanged(self):
-		key = self.grammarLineEdit.text()
-		if key not in self.grammarDict:
-			self.button.setText("Add")
-			self.grammarTextEdit.setText("")
-		else:
-			self.grammarTextEdit.setText(self.grammarDict[key])
-			self.button.setText("Edit")
+		if not self.saveButton.isVisible():
+			key = self.grammarLineEdit.text()
+			if key in self.grammarDict:
+				self.button.setText("Edit")
+				self.grammarTextEdit.setText(self.grammarDict[key])
+				self.grammarTextEdit.setEnabled(False)
+			else:
+				self.button.setText("Add")
+				self.grammarTextEdit.setText("")
+				self.grammarTextEdit.setEnabled(True)
 
 class Main(QtGui.QMainWindow):
 	def __init__(self, parent = None):
@@ -165,10 +191,10 @@ class Main(QtGui.QMainWindow):
 		self.filename = ""
 		self.saved = False
 		self.loaded = False
-		self.currentLanguage = ""
+		self.language = ""
 		self.originalFontSize = 12
 		self.languageList = self.initGrammar()
-		self.grammarDict = {'nor': 'naiz\nhaiz\nda','1':'monkey','z':'2','adgfd':'23'}
+		self.grammarDict = {}
 		self.initUI()
 
 	def initGrammar(self):
@@ -306,15 +332,15 @@ class Main(QtGui.QMainWindow):
 		# Grammar
 		self.grammarMenu = self.menubar.addMenu("&Grammar")
 		self.setLanguageMenu = self.grammarMenu.addMenu("Set Language")
-		languageGroup = QtGui.QActionGroup(self.setLanguageMenu)
+		self.languageGroup = QtGui.QActionGroup(self.setLanguageMenu)
 		for language in self.languageList:
 			# Add action to actionGroup
-			action = languageGroup.addAction(language.capitalize())
+			action = self.languageGroup.addAction(language.capitalize())
 			action.setCheckable(True)
 			action.triggered[()].connect(lambda language=language: self.changeLanguage(language))
 			# Add action to menu
 			self.setLanguageMenu.addAction(action)
-		self.grammarAction = self.grammarMenu.addAction("&Grammar",self.addGrammar)
+		self.grammarAction = self.grammarMenu.addAction("Add/Edit &Grammar",self.addGrammar)
 		self.grammarAction.setShortcut("Ctrl+G")
 		# Tools
 		toolMenu = self.menubar.addMenu("&Tools")
@@ -362,12 +388,20 @@ class Main(QtGui.QMainWindow):
 
 		# If we succeeded, open and read file
 		if self.filename:
+			# Store the file in the settings file to automatically load it next time
 			with open("settings.cfg","wt") as file:
 				file.write(self.filename)
-			vbox = QtGui.QVBoxLayout()
-			vbox.setAlignment(Qt.AlignTop)
 			with open(self.filename,"rt") as file:
 				fileContents = file.read()
+				# First load the language if any of the file
+				self.language = pullString(fileContents,"<<<LANG:",">>>")
+				# Load language grammar rules
+				self.changeLanguage(self.language)
+				# Check the language in the [Grammar->Languages] menu
+				for action in self.languageGroup.findChildren(QtGui.QAction):
+					if action.text().lower() == self.language:
+						action.setChecked(True)
+				# Count number of chapters in book
 				numChapters = fileContents.count("<<<CHAPTER>>>")
 				# divide the text into chapters
 				chapters = fileContents.split("<<<CHAPTER>>>\n\n")
@@ -381,6 +415,11 @@ class Main(QtGui.QMainWindow):
 				self.text = Text(original,translation)
 				self.buildChapters()
 				self.saved = True
+		if self.language:
+			filename = GRAMMAR_DIR+"/"+self.language+".ilg"
+			with open(filename,"rt") as f:
+				reader = csv.reader(f,delimiter=":")
+				self.grammarDict = dict(reader)
 
 	def save(self):
 		if self.loaded:
@@ -398,7 +437,7 @@ class Main(QtGui.QMainWindow):
 
 				# Now that we have a name, save
 				with open(self.filename,"wt") as file:
-					string = ""
+					string = "<<<LANG:{}>>>\n".format(self.language)
 					i = 0
 					curRow = 0
 					for chapter in self.text.chapterList:
@@ -414,6 +453,13 @@ class Main(QtGui.QMainWindow):
 						i += 1
 					file.write(string)
 					self.saved = True
+			# If a language is set, save language data
+			if self.language:
+				filename = GRAMMAR_DIR+"/"+self.language+".ilg"
+				with open(filename,"wt") as f:
+					writer = csv.writer(f,delimiter=":")
+					for key,value in self.grammarDict.items():
+						writer.writerow([key,value])
 
 	def saveAs(self):
 		if self.loaded:
@@ -541,18 +587,19 @@ class Main(QtGui.QMainWindow):
 			self.textWindow.show()
 
 	def changeLanguage(self, language):
-		self.currentLanguage = language
+		self.language = language
 		filename = GRAMMAR_DIR+"/"+language+".ilg"
-		print(filename)
+		# make sure grammars directory exists
 		if os.path.isdir(GRAMMAR_DIR):
 			with open(filename,"rt") as f:
 				grammar = f.read()
 
 	def addGrammar(self):
+		# create and execute QDialog
 		self.window = GrammarWindow(self.grammarDict)
 		self.window.exec_()
+		# save the new dictionary
 		self.grammarDict = self.window.grammarDict
-
 
 	# MISC ROUTINES #
 
@@ -618,7 +665,7 @@ class Main(QtGui.QMainWindow):
 				gram.setCompleter(self.completer)
 
 				#gram.setStyleSheet(css)
-				#gram.setFocusPolicy(Qt.NoFocus)
+				gram.setFocusPolicy(Qt.ClickFocus)
 
 				# Add original/translation to wordList
 				wordList.append([rows,orig,trans,gram])
@@ -692,9 +739,7 @@ def pullString(str,delim1,delim2):
 	else:
 		return str[strStart:]
 
-
-"""
-	This class handles our text
+"""	This class handles our text
 	Variables
 	---------
 	original:
