@@ -78,6 +78,7 @@ class OriginalWindow(QtGui.QWidget):
 		layout.setContentsMargins(0,0,0,0)
 
 		self.chapterText = QtGui.QLabel(self.text)
+		self.chapterText.setTextInteractionFlags(Qt.TextSelectableByMouse)
 		self.chapterText.setContentsMargins(10,5,10,5)
 		self.chapterText.setWordWrap(True)
 		self.chapterText.setAlignment(Qt.AlignJustify)
@@ -700,12 +701,13 @@ class Main(QtGui.QMainWindow):
 					trans = TransLineEdit(translation[wordCount].strip())
 				else:
 					trans = TransLineEdit()
+				trans.home(True)
 				# Special signal to move cursor down
 				trans.keyDownPressed.connect(self.keyDownPressed)
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
 				# set up grammar box and special grammar completer
-				if translation and len(translation) > wordCount:
+				if grammar and len(grammar) > wordCount:
 					gram = QtGui.QLineEdit(grammar[wordCount].strip())
 				else:
 					gram = QtGui.QLineEdit()
