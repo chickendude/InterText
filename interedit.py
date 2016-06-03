@@ -25,9 +25,18 @@ class WordButton(QtGui.QPushButton):
 
 class TransLineEdit(QtGui.QLineEdit):
 	# Re implemented for the focus in/out events (to know if it is currently selected or not)
+
+	keyDownPressed = QtCore.pyqtSignal()
+
 	def __init__(self, parent = None):
 		super(TransLineEdit, self).__init__(parent)
 		self.active = False
+
+	def event(self,event):
+		if (event.type()==QtCore.QEvent.KeyPress) and (event.key()==Qt.Key_Down):
+			self.keyDownPressed.emit()
+			return True
+		return QtGui.QLineEdit.event(self, event)
 
 	def focusInEvent(self, e):
 		self.active = True
@@ -532,13 +541,6 @@ class Main(QtGui.QMainWindow):
 				if answer == QtGui.QMessageBox.Yes:
 					self.save()
 
-	"""	loadText
-		*chapter = chapter number to load (starts at 0)
-		*original = the untranslated text
-		translation (optional) = the already translated text
-		grammar (optional) = list of grammar notes
-	"""
-
 	def multiAdd(self):
 		if self.loaded:
 			curChap = self.text.currentChapter
@@ -637,7 +639,12 @@ class Main(QtGui.QMainWindow):
 			gram.completer().setModel(model)
 
 	# MISC ROUTINES #
-
+	"""	loadText
+		*chapter = chapter number to load (starts at 0)
+		*original = the untranslated text
+		translation (optional) = the already translated text
+		grammar (optional) = list of grammar notes
+	"""
 	def loadText(self, chapter, original, translation="", grammar=""):
 		# build translation list if we've already got a translation
 		if translation:
@@ -693,6 +700,8 @@ class Main(QtGui.QMainWindow):
 					trans = TransLineEdit(translation[wordCount].strip())
 				else:
 					trans = TransLineEdit()
+				# Special signal to move cursor down
+				trans.keyDownPressed.connect(self.keyDownPressed)
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
 				# set up grammar box and special grammar completer
@@ -778,6 +787,13 @@ class Main(QtGui.QMainWindow):
 					j += 1
 				self.text.chapterList[i] = chapter[:-1]
 			i += 1
+
+	def keyDownPressed(self):
+		# Find the currently selected input box (where the text cursor is)
+		# ..and set the focus to the grammar box underneath
+		for (row,org,trans,gram) in self.text.wordList[self.text.currentChapter]:
+			if trans.active == True:
+				gram.setFocus(True)
 
 def pullString(str,delim1,delim2):
 	strStart = str.find(delim1) + len(delim1)
