@@ -399,10 +399,9 @@ class Main(QtGui.QMainWindow):
 		for i in range(self.text.numChapters):
 			self.scrollAreaList.append(QtGui.QWidget())
 			self.scrollAreaStack.addWidget(self.scrollAreaList[i])
-		translation = ""
-		if self.text.translationList:
-			translation = self.text.translationList[0]
-		self.loadText(0,self.text.chapterList[0],translation)
+		# First change chapter to 1, otherwise changeChapter won't let us change
+		self.text.currentChapter = 1
+		self.changeChapter(0)
 
 	def open(self,filename=""):
 		if filename:
@@ -418,12 +417,13 @@ class Main(QtGui.QMainWindow):
 			with open(self.filename,"rt") as file:
 				fileContents = file.read()
 				# First load the language if any of the file
-				self.language = pullString(fileContents,"<<<LANG:",">>>")
-				if self.language:
-					filename = GRAMMAR_DIR+"/"+self.language+".ilg"
-					with open(filename,"rt") as f:
-						reader = csv.reader(f,delimiter=":")
-						self.grammarDict = dict(reader)
+				if "<<<LANG:" in fileContents:
+					self.language = pullString(fileContents,"<<<LANG:",">>>")
+					if self.language:
+						filename = GRAMMAR_DIR+"/"+self.language+".ilg"
+						with open(filename,"rt") as f:
+							reader = csv.reader(f,delimiter=":")
+							self.grammarDict = dict(reader)
 				# Load language grammar rules
 				self.changeLanguage(self.language)
 				# Check the language in the [Grammar->Languages] menu
@@ -436,12 +436,15 @@ class Main(QtGui.QMainWindow):
 				chapters = fileContents.split("<<<CHAPTER>>>\n\n")
 				original = ""
 				translation = ""
+				grammar = ""
 				for i in range(1,numChapters+1):
-					(orig,trans) = chapters[i].split("\n\n<<<TRAN>>>\n\n")
+					(orig,trans_gram) = chapters[i].split("\n\n<<<TRAN>>>\n\n")
 					original += "\n_DIV_\n\n" + orig.strip()
+					(trans,gram) = trans_gram.split("<<<GRAM>>>\n")
 					translation += "\n_DIV_\n\n" + trans.strip()
+					grammar += "\n_DIV_\n\n" + gram.strip()
 				# create the text object
-				self.text = Text(original,translation)
+				self.text = Text(original,translation,grammar)
 				self.buildChapters()
 				self.saved = True
 
@@ -460,20 +463,23 @@ class Main(QtGui.QMainWindow):
 					self.filename += ".ilt"
 
 				# Now that we have a name, save
-				with open(self.filename,"wt") as file:
+
+				with open(self.filename,"w") as file:
 					string = "<<<LANG:{}>>>\n".format(self.language)
 					i = 0
 					curRow = 0
 					for chapter in self.text.chapterList:
 						original = "\n<<<CHAPTER>>>\n\n"+chapter+"\n\n"
 						translation = "<<<TRAN>>>\n\n"
+						grammar = "<<<GRAM>>>\n\n"
 						if self.text.wordList[i]:
 							for (row,org,trans,gram) in self.text.wordList[i]:
 								translation += "= " + trans.text() + " "
+								grammar += "= " + gram.text() + " "
 						else:
 							translation += self.text.translationList[i].strip()+" "
-
-						string += original + translation[:-1] + "\n"
+							grammar += self.text.grammarList[i].strip()+" "
+						string += original + translation[:-1] + "\n\n" + grammar[:-1] + "\n"
 						i += 1
 					file.write(string)
 					self.saved = True
@@ -610,12 +616,13 @@ class Main(QtGui.QMainWindow):
 			self.textWindow.show()
 
 	def changeLanguage(self, language):
-		self.language = language
-		filename = GRAMMAR_DIR+"/"+language+".ilg"
-		# make sure grammars directory exists
-		if os.path.isdir(GRAMMAR_DIR):
-			with open(filename,"rt") as f:
-				grammar = f.read()
+		if language:
+			self.language = language
+			filename = GRAMMAR_DIR+"/"+language+".ilg"
+			# make sure grammars directory exists
+			if os.path.isdir(GRAMMAR_DIR):
+				with open(filename,"rt") as f:
+					grammar = f.read()
 
 	def addGrammar(self):
 		# create and execute QDialog
@@ -623,6 +630,11 @@ class Main(QtGui.QMainWindow):
 		self.window.exec_()
 		# save the new dictionary
 		self.grammarDict = self.window.grammarDict
+		for row,orig,trans,gram in self.text.wordList[self.text.currentChapter]:
+			itemList = sorted(list(self.grammarDict))
+			model = QtGui.QStringListModel()
+			model.setStringList(itemList)
+			gram.completer().setModel(model)
 
 	# MISC ROUTINES #
 
@@ -631,6 +643,10 @@ class Main(QtGui.QMainWindow):
 		if translation:
 			translation = translation.split("=")
 			del translation[0]
+
+		if grammar:
+			grammar = grammar.split("=")
+			del grammar[0]
 
 		# split paragraphs
 		paragraphsOriginal = original.split('\n')
@@ -673,14 +689,17 @@ class Main(QtGui.QMainWindow):
 											border: 1px solid #A5A5E5;
 										}""")
 				orig.setFocusPolicy(Qt.NoFocus)
-				if translation:
+				if translation and len(translation) > wordCount:
 					trans = TransLineEdit(translation[wordCount].strip())
 				else:
 					trans = TransLineEdit()
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
-
-				gram = QtGui.QLineEdit()
+				# set up grammar box and special grammar completer
+				if translation and len(translation) > wordCount:
+					gram = QtGui.QLineEdit(grammar[wordCount].strip())
+				else:
+					gram = QtGui.QLineEdit()
 				gram.setStyleSheet(css)
 				itemList = sorted(list(self.grammarDict))
 				model = QtGui.QStringListModel()
@@ -689,9 +708,6 @@ class Main(QtGui.QMainWindow):
 				self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
 				self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 				self.completer.setModel(model)
-
-				#self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
-				#self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 				gram.setCompleter(self.completer)
 
 				#gram.setStyleSheet(css)
@@ -729,10 +745,12 @@ class Main(QtGui.QMainWindow):
 	def changeChapter(self,i):
 		if(i != self.text.currentChapter):
 			if not self.scrollAreaList[i].layout():
-				translation = ""
+				translation = grammar = ""
 				if self.text.translationList[i]:
 					translation = self.text.translationList[i]
-				self.loadText(i,self.text.chapterList[i],translation)
+				if self.text.grammarList[i]:
+					grammar = self.text.grammarList[i]
+				self.loadText(i,self.text.chapterList[i],translation,grammar)
 			self.text.currentChapter = i
 			self.scrollAreaStack.setCurrentIndex(i)
 
@@ -782,9 +800,9 @@ def pullString(str,delim1,delim2):
 	chapterList
 """
 class Text:
-	def __init__(self,original,translation=""):
+	def __init__(self,original,translation="",grammar=""):
 		self.original = original
-		self.grammar = ""
+		# This holds a list of widgets for each chapter: row,original,translation,grammar
 		self.wordList = []
 		self.currentChapter = 0
 		# count chapters and split text into chapters
@@ -794,6 +812,17 @@ class Text:
 		# first entry should be an empty string
 		del self.chapterList[0]
 
+		# Build empty set if we need it
+		emptyList = []
+		for i in range(self.numChapters):
+			paragraphs = self.chapterList[i].split('\n')
+			empty = ""
+			for paragraph in paragraphs:
+				words = paragraph.split(' ')
+				for word in words:
+					empty += "= "
+			emptyList.append(empty)
+
 		# translation per chapter
 		self.translationList = ['']*self.numChapters
 		if translation:
@@ -801,14 +830,17 @@ class Text:
 			del self.translationList[0]
 		else:
 			# build empty translation list based on number of words in text
-			for i in range(self.numChapters):
-				paragraphs = self.chapterList[i].split('\n')
-				trans = ""
-				for paragraph in paragraphs:
-					words = paragraph.split(' ')
-					for word in words:
-						trans += "= "
-				self.translationList[i] = trans
+			self.translationList = emptyList
+
+		# grammar section per chapter
+		self.grammarList = ['']*self.numChapters
+		if grammar:
+			self.grammarList = grammar.split("_DIV_")
+			del self.grammarList[0]
+		else:
+			# build empty translation list based on number of words in text
+			self.grammarList = emptyList
+
 		# create empty wordlist for each chapter
 		for i in range(self.numChapters):
 			self.wordList.append([])

@@ -1,24 +1,24 @@
+verb/past/egon:"nengoen
+zegoen"
+case/nor:"	sing	pl	indef	proper
+vowel	-a	-ak	-	-
+cons	-a	-ak	-	-"
+case/nork:"	sing	pl	indef	proper
+vowel	-ak	-ek	-k	-k
+cons	-ak	-ek	-ek	-ek"
 verb/present/nor-nork:"dut
 duk/n
 du
 dugu
 duzu
 duzue"
-case/nor:"	sing	pl	indef	proper
-vowel	-a	-ak	-	-
-cons	-a	-ak	-	-"
-verb/past/egon:"nengoen
-zegoen"
-verb/present/nor:"naiz
-haiz
-da"
+verb/past/nor:nintzen
 verb/present/egon:"nago
 hago
 dago
 gaude
 zaude
 zaudete"
-verb/past/nor:nintzen
-case/nork:"	sing	pl	indef	proper
-vowel	-ak	-ek	-k	-k
-cons	-ak	-ek	-ek	-ek"
+verb/present/nor:"naiz
+haiz
+da"
