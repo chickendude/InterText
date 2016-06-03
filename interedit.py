@@ -38,7 +38,7 @@ class TransLineEdit(QtGui.QLineEdit):
 		super(TransLineEdit, self).focusOutEvent(e)
 
 class GramLineEdit(QtGui.QLineEdit):
-	def __init__(self,grammarDict,css=None, parent=None):
+	def __init__(self,grammarDict=None,css=None, parent=None):
 		super(GramLineEdit, self).__init__(parent)
 		self.grammarDict = grammarDict
 		self.setStyleSheet(css)
@@ -113,9 +113,12 @@ class GrammarWindow(QtGui.QDialog):
 		# Where we type new grammar items
 		self.grammarLineEdit = QtGui.QLineEdit()
 		itemList = sorted(list(self.grammarDict))
-		self.completer = QtGui.QCompleter(itemList, self.grammarLineEdit)
+		model = QtGui.QStringListModel()
+		model.setStringList(itemList)
+		self.completer = GrammarCompleter(self.grammarLineEdit)
 		self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
 		self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+		self.completer.setModel(model)
 		self.grammarLineEdit.setCompleter(self.completer)
 		self.grammarLineEdit.textChanged.connect(self.textChanged)
 
@@ -183,6 +186,27 @@ class GrammarWindow(QtGui.QDialog):
 				self.button.setText("Add")
 				self.grammarTextEdit.setText("")
 				self.grammarTextEdit.setEnabled(True)
+
+class GrammarCompleter(QtGui.QCompleter):
+	def __init__(self, parent=None):
+		super(GrammarCompleter, self).__init__(parent)
+
+	def setModel(self, model):
+		self.sourceModel = model
+		self.filterProxyModel = QtGui.QSortFilterProxyModel(self)
+		self.filterProxyModel.setSourceModel(self.sourceModel)
+		super(GrammarCompleter, self).setModel(self.filterProxyModel)
+
+	def updateModel(self):
+		# Let / autocomplete until the next / using regexp
+		pattern = QtCore.QRegExp(self.completionPrefix.replace("/",".*/"), QtCore.Qt.CaseInsensitive, QtCore.QRegExp.RegExp)
+		self.filterProxyModel.setFilterRegExp(pattern)
+
+	def splitPath(self, path):
+		# path = user's input
+		self.completionPrefix = path
+		self.updateModel()
+		return ""
 
 class Main(QtGui.QMainWindow):
 	def __init__(self, parent = None):
@@ -395,6 +419,11 @@ class Main(QtGui.QMainWindow):
 				fileContents = file.read()
 				# First load the language if any of the file
 				self.language = pullString(fileContents,"<<<LANG:",">>>")
+				if self.language:
+					filename = GRAMMAR_DIR+"/"+self.language+".ilg"
+					with open(filename,"rt") as f:
+						reader = csv.reader(f,delimiter=":")
+						self.grammarDict = dict(reader)
 				# Load language grammar rules
 				self.changeLanguage(self.language)
 				# Check the language in the [Grammar->Languages] menu
@@ -415,11 +444,6 @@ class Main(QtGui.QMainWindow):
 				self.text = Text(original,translation)
 				self.buildChapters()
 				self.saved = True
-		if self.language:
-			filename = GRAMMAR_DIR+"/"+self.language+".ilg"
-			with open(filename,"rt") as f:
-				reader = csv.reader(f,delimiter=":")
-				self.grammarDict = dict(reader)
 
 	def save(self):
 		if self.loaded:
@@ -502,8 +526,7 @@ class Main(QtGui.QMainWindow):
 				if answer == QtGui.QMessageBox.Yes:
 					self.save()
 
-	"""
-		loadText
+	"""	loadText
 		*chapter = chapter number to load (starts at 0)
 		*original = the untranslated text
 		translation (optional) = the already translated text
@@ -657,11 +680,18 @@ class Main(QtGui.QMainWindow):
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
 				trans.setStyleSheet(css)
 
-				grammarDict = ['verb/present/nor', 'verb/present/nor-nori', 'verb/present/nor-nork', 'verb/present/nor-nori-nork', 'verb/past/nor','verb/past/nor-nori','verb/past/nor-nork','verb/past/nor-nori-nork','case/non','case/nor','case/nori','case/nork']
-				gram = GramLineEdit(grammarDict,css)
-				self.completer = QtGui.QCompleter(grammarDict, gram)
+				gram = QtGui.QLineEdit()
+				gram.setStyleSheet(css)
+				itemList = sorted(list(self.grammarDict))
+				model = QtGui.QStringListModel()
+				model.setStringList(itemList)
+				self.completer = GrammarCompleter(gram)
 				self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
 				self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+				self.completer.setModel(model)
+
+				#self.completer.setCompletionMode(QtGui.QCompleter.PopupCompletion)
+				#self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
 				gram.setCompleter(self.completer)
 
 				#gram.setStyleSheet(css)
