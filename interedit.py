@@ -556,11 +556,14 @@ class Main(QtGui.QMainWindow):
 			if numWords > 0:
 
 				words = "["
+				defaultText = ""
 				for (orig,trans) in selectedWords:
 					words += orig.text()+", "
+					defaultText += orig.text() + " "
 				words = words[:-2]+"]"
+				defaultText = defaultText[:-1] + "; "
 
-				text,ok = QtGui.QInputDialog.getText(self,words,"Enter translation:")
+				text,ok = QtGui.QInputDialog.getText(self, words, "Enter translation:", text = defaultText)
 				if ok:
 					for (orig,trans) in selectedWords:
 						trans.setText(trans.text().rstrip()+" ["+text+"]")
