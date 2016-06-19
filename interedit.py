@@ -706,7 +706,7 @@ class Main(QtGui.QMainWindow):
 					trans = TransLineEdit(translation[wordCount].strip())
 				else:
 					trans = TransLineEdit()
-				trans.home(True)
+				trans.home(False)
 				# Special signal to move cursor down
 				trans.keyDownPressed.connect(self.keyDownPressed)
 				css = "text-align: left; padding: 0px 1px; margin: 0 0px; border: 1px dotted darkgray; background: white;"
