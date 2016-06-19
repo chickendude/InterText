@@ -46,6 +46,7 @@ class TransLineEdit(QtGui.QLineEdit):
 		self.active = False
 		super(TransLineEdit, self).focusOutEvent(e)
 
+# LineEdit field for grammar notes
 class GramLineEdit(QtGui.QLineEdit):
 	def __init__(self,grammarDict=None,css=None, parent=None):
 		super(GramLineEdit, self).__init__(parent)
@@ -59,6 +60,7 @@ class GramLineEdit(QtGui.QLineEdit):
 	def textChanged_(self):
 		grammarStr = ""
 
+# A pop up window with the original text
 class OriginalWindow(QtGui.QWidget):
 	def __init__(self, text, fontSize = 12, parent=None):
 		super(OriginalWindow, self).__init__(parent)
@@ -561,7 +563,7 @@ class Main(QtGui.QMainWindow):
 					words += orig.text()+", "
 					defaultText += orig.text() + " "
 				words = words[:-2]+"]"
-				defaultText = defaultText[:-1] + "; "
+				defaultText = defaultText[:-1].strip('-,.!?"()[]\{\}\'') + "; "
 
 				text,ok = QtGui.QInputDialog.getText(self, words, "Enter translation:", text = defaultText)
 				if ok:
