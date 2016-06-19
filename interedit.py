@@ -19,7 +19,7 @@ class WordButton(QtGui.QPushButton):
 
 		action = menu.exec_(self.mapToGlobal(event.pos()))
 		if action == editAction:
-			text,ok = QtGui.QInputDialog.getText(self,self.text(),"New value:")
+			text,ok = QtGui.QInputDialog.getText(self,self.text(),"New value:",text = self.original)
 			if ok:
 				self.setText(text)
 
